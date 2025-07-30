@@ -1,0 +1,41 @@
+# .goreleaser.yaml
+version: 2
+
+project_name: PROJECT_NAME
+
+before:
+  hooks:
+  - go mod tidy
+
+builds:
+- id: PROJECT_NAME
+  main: . # root contains the main package
+  binary: PROJECT_NAME
+  goos: [ linux ]
+  goarch: [ amd64, arm64 ]
+  env: [ "CGO_ENABLED=0" ]
+  ldflags:
+  - "-s -w -X PROJECT_NAME/pkg/settings.Version={{.Version}} -X PROJECT_NAME/pkg/settings.Commit={{.ShortCommit}} -X PROJECT_NAME/pkg/settings.Date={{.Date}} -X PROJECT_NAME/pkg/settings.Release={{.ProjectName}}@{{.Version}}"
+
+archives:
+- formats: [ tar.gz ]
+  name_template: '{{ .ProjectName }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else if eq .Arch "386" }}i386{{ else }}{{ .Arch }}{{ end }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  format_overrides:
+  - goos: windows
+    formats: [ zip ]
+
+dockers:
+
+- ids: [ PROJECT_NAME ]
+  use: buildx
+  dockerfile: Dockerfile
+  extra_files:
+  - docker/
+  image_templates:
+  - "{{ .Env.ECR_REGISTRY }}/PROJECT_NAME:{{ .Version }}"
+  - "{{ .Env.ECR_REGISTRY }}/PROJECT_NAME:latest"
+
+release:
+  github:
+    owner: user-cube
+    name: '{{ .ProjectName }}'
