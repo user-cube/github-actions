@@ -1,0 +1,30 @@
+branches:
+- main
+
+plugins:
+
+- path: "@semantic-release/commit-analyzer"
+  preset: angular # Custom commit message parser for JIRA-123 fix: message format
+  parserOpts:
+    headerPattern: "^(\\w+-\\d+)\\s+([a-z]+)(\\([a-z]+\\))?:\\s+(.*)$"
+    headerCorrespondence:
+    - jira
+    - type
+    - scope
+    - subject
+
+- path: "@semantic-release/release-notes-generator"
+  preset: angular # Custom commit message parser for JIRA-123 fix: message format
+  parserOpts:
+    headerPattern: "^(\\w+-\\d+)\\s+([a-z]+)(\\([a-z]+\\))?:\\s+(.*)$"
+    headerCorrespondence:
+    - jira
+    - type
+    - scope
+    - subject
+
+- "@semantic-release/github"
+
+- path: "@semantic-release/exec"
+  publishCmd: |
+    goreleaser release --clean
