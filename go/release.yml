@@ -1,0 +1,124 @@
+# .github/workflows/release.yml
+#
+# ▶ WHAT IT DOES
+#   1. Triggers on every push to main (and on‑demand via “Run workflow”)
+#   2. Runs semantic‑release, which:
+#        • analyses commits, bumps version, adds changelog
+#        • tags & drafts / updates a GitHub release
+#        • calls “goreleaser release --clean” via the exec plugin
+#   3. GoReleaser builds the binary, pushes a multi‑arch image to AWS ECR,
+#      and uploads any archives/assets to the GitHub release.
+#
+# ▶ SECRETS REQUIRED (repo → Settings → Secrets → Actions)
+#   • AWS_ACCESS_KEY_ID          IAM creds with ECR push perms
+#   • AWS_SECRET_ACCESS_KEY
+#   • (optionally) DOCKER creds if you push anywhere else
+#
+# The built image will be published to:
+#   $ECR_REGISTRY/executor:<tag(s)>
+#
+# See goreleaser.yaml for the templated image tags.
+
+
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:      # manual trigger
+
+# Prevent overlapping publishes on the same ref
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.24"
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+permissions:
+  contents: write          # create tags / releases
+  packages: write          # (not used for ECR, but harmless)
+  id-token: write          # future OIDC use, kept here for flexibility
+  pull-requests: write     # for semantic‑release
+  issues: write            # Needed to comment on issues (optional but helpful)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.set_version.outputs.version }}
+
+    steps:
+      # -- 1) Checkout repo (full history for semantic‑release) -------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # -- 2) Node toolchain for semantic‑release ---------------------------
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Semantic Releaser Dependencies
+        run: npm install -g @goreleaser/goreleaser semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/github @semantic-release/exec
+
+      # -- 3) Go toolchain --------------------------------------------------
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: true
+
+      # -- 4) Install (but don’t run) GoReleaser ----------------------------
+      - name: Install GoReleaser CLI
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: latest
+          install-only: true
+
+      # -- 5) Multi‑arch builders ------------------------------------------
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # -- 6) AWS / ECR authentication -------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # -- 7) Run semantic‑release (which in turn calls GoReleaser) ---------
+
+      - name: Get version from semantic-release
+        id: set_version
+        env:
+          # GH token provided automatically; enables tag & release edits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass ECR registry value into goreleaser.yml templates
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+        run: |
+          VERSION=$(npx semantic-release --dry-run | grep -oP 'The next release version is \K[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Semantic Release → GoReleaser
+        env:
+          # GH token provided automatically; enables tag & release edits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass ECR registry value into goreleaser.yml templates
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+        run: npx semantic-release
+      - name: Upload GoReleaser archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: goreleaser-archive
+          path: dist/PROJECT_NAME_Linux_x86_64.tar.gz
