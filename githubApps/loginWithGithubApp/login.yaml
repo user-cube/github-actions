@@ -1,0 +1,29 @@
+name: Login with GitHub App
+
+on:
+  pull_request:
+    branches:
+    - main
+
+jobs:
+  login:
+    name: Login with GitHub App
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/create-github-app-token@v2
+      id: app
+      with:
+        app-id: ${{ secrets.GITHUB_APP_ID }}
+        private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app.outputs.token }}
+        persist-credentials: false
+
+    - name: Setup Git (Bot App)
+      run: |
+        git config --global user.name "${{ steps.app.outputs.app-slug }}[bot]"
+        git config --global user.email "${{ steps.app.outputs.app-slug }}[bot]@users.noreply.github.com"
