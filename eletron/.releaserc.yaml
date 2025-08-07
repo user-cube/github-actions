@@ -1,0 +1,51 @@
+branches:
+- main
+- name: beta
+  prerelease: true
+  channel: beta
+
+plugins:
+- "@semantic-release/commit-analyzer"
+- "@semantic-release/release-notes-generator"
+- "@semantic-release/changelog"
+
+# Build Linux AppImage before publishing
+- - "@semantic-release/exec"
+  - prepareCmd: "npm run dist"
+
+# Publish the GitHub Release, attach the AppImage, and comment on merged PRs
+- - "@semantic-release/github"
+  - assets:
+    - path: "dist/*.AppImage"
+      label: "Linux AppImage"
+
+# Commit CHANGELOG and package version bump
+- - "@semantic-release/git"
+  - assets:
+    - "CHANGELOG.md"
+    - "package.json"
+    - "package-lock.json"
+    message: "chore(release): ${nextRelease.version} [skip ci]
+
+
+      ${nextRelease.notes}"
+
+tagFormat: "v${version}"
+preset: "angular"
+
+releaseNotes:
+  preset: "angular"
+  parserOpts:
+    noteKeywords:
+    - BREAKING CHANGE
+    - BREAKING CHANGES
+  writerOpts:
+    groupBy: "type"
+    commitGroupsSort: "title"
+    commitsSort: "header"
+
+changelogFile: "CHANGELOG.md"
+changelogTitle: |
+  # Changelog
+
+  All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.

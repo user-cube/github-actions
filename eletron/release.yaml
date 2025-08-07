@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    branches:
+    - main
+
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/create-github-app-token@v2
+      id: app
+      with:
+        app-id: ${{ secrets.DEVOPS_BUDDY_APP_ID }}
+        private-key: ${{ secrets.DEVOPS_BUDDY_PRIVATE_KEY }}
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app.outputs.token }}
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Semantic Releaser Dependencies
+      run: npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/github @semantic-release/exec
+
+    - name: Setup Git (Bot App)
+      run: |
+        git config --global user.name "${{ steps.app.outputs.app-slug }}[bot]"
+        git config --global user.email "${{ steps.app.outputs.app-slug }}[bot]@users.noreply.github.com"
+
+    - name: Release
+      env:
+        GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        NODE_ENV: production
+      run: npx semantic-release
